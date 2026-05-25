@@ -1,0 +1,30 @@
+.task-done span {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+.task-done {
+  background-color: #d1fae5 !important;
+}
+.dark .task-done {
+  background-color: #064e3b !important;
+}
+ 
+/* Transição suave de opacidade para remoção de card */
+[class*="opacity-0"] {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+ 
+/* Scrollbar personalizada (opcional) */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #c7d2fe;
+  border-radius: 99px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #4338ca;
+}
