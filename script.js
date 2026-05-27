@@ -189,14 +189,35 @@ function initLoginPage() {
       return;
     }
 
-    // Verifica se o usuário foi banido
+    // Verifica e cria/atualiza registro do usuário na tabela users
     if (authData.user) {
-      const { data: userData } = await db
+      // Tenta buscar o usuário
+      let { data: userData, error: selectError } = await db
         .from("users")
-        .select("is_banned")
+        .select("is_banned, id")
         .eq("id", authData.user.id)
         .single();
 
+      // Se não existe, cria o registro (usuários cadastrados antes da tabela ser criada)
+      if (selectError && selectError.code === "PGRST116") {
+        const { error: insertError } = await db
+          .from("users")
+          .insert({
+            id: authData.user.id,
+            email: emailVal,
+            is_admin: false,
+            is_banned: false,
+            last_activity: new Date().toISOString(),
+          })
+          .select();
+
+        if (insertError) {
+          console.error("Erro ao criar registro de usuário:", insertError);
+        }
+        userData = { is_banned: false, id: authData.user.id };
+      }
+
+      // Verifica se foi banido
       if (userData?.is_banned) {
         await db.auth.signOut();
         showAlert("❌ Sua conta foi banida e não pode fazer login.");
