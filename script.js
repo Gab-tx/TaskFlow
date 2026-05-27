@@ -78,6 +78,7 @@ function updateUI() {
   const authLinks = el("authLinks");
   const userArea  = el("userArea");
   const userEmail = el("userEmail");
+  const adminLink = el("adminLink");
   const alertLogin = el("alertLogin");
 
   if (!authLinks || !userArea) return;
@@ -88,11 +89,31 @@ function updateUI() {
     userArea.classList.add("flex");
     if (userEmail) userEmail.textContent = currentUser.email;
     alertLogin?.classList.add("hidden");
+
+    // Carrega info de admin
+    checkIfAdmin();
   } else {
     authLinks.classList.remove("hidden");
     userArea.classList.add("hidden");
     userArea.classList.remove("flex");
+    if (adminLink) adminLink.classList.add("hidden");
     alertLogin?.classList.remove("hidden");
+  }
+}
+
+async function checkIfAdmin() {
+  if (!currentUser) return;
+  const adminLink = el("adminLink");
+  if (!adminLink) return;
+
+  const { data } = await db
+    .from("users")
+    .select("is_admin")
+    .eq("id", currentUser.id)
+    .single();
+
+  if (data?.is_admin) {
+    adminLink.classList.remove("hidden");
   }
 }
 
@@ -103,6 +124,10 @@ db.auth.onAuthStateChange((event, session) => {
   if (event === "SIGNED_IN") {
     updateUI();
     loadTasks();
+    // Atualiza last_activity a cada minuto enquanto está na página
+    if (el("taskList")) {
+      setInterval(updateLastActivity, 60000);
+    }
   }
 
   if (event === "SIGNED_OUT") {
@@ -151,7 +176,7 @@ function initLoginPage() {
     btnLogin.disabled = true;
     btnLogin.textContent = "Entrando...";
 
-    const { error } = await db.auth.signInWithPassword({
+    const { data: authData, error: authError } = await db.auth.signInWithPassword({
       email: emailVal,
       password: passVal,
     });
@@ -159,9 +184,30 @@ function initLoginPage() {
     btnLogin.disabled = false;
     btnLogin.textContent = "Entrar";
 
-    if (error) {
+    if (authError) {
       showAlert("E-mail ou senha inválidos.");
       return;
+    }
+
+    // Verifica se o usuário foi banido
+    if (authData.user) {
+      const { data: userData } = await db
+        .from("users")
+        .select("is_banned")
+        .eq("id", authData.user.id)
+        .single();
+
+      if (userData?.is_banned) {
+        await db.auth.signOut();
+        showAlert("❌ Sua conta foi banida e não pode fazer login.");
+        return;
+      }
+
+      // Atualiza last_activity
+      await db
+        .from("users")
+        .update({ last_activity: new Date().toISOString() })
+        .eq("id", authData.user.id);
     }
 
     window.location.href = "index.html";
@@ -209,7 +255,7 @@ function initCadastroPage() {
     btnRegister.disabled = true;
     btnRegister.textContent = "Criando conta...";
 
-    const { error } = await db.auth.signUp({ email: emailVal, password: passVal });
+    const { data: authData, error } = await db.auth.signUp({ email: emailVal, password: passVal });
 
     btnRegister.disabled = false;
     btnRegister.textContent = "Criar Conta";
@@ -217,6 +263,20 @@ function initCadastroPage() {
     if (error) {
       showAlert(error.message);
       return;
+    }
+
+    // Cria registro na tabela users
+    if (authData.user) {
+      await db
+        .from("users")
+        .insert({
+          id: authData.user.id,
+          email: emailVal,
+          is_admin: false,
+          is_banned: false,
+          last_activity: new Date().toISOString(),
+        })
+        .select();
     }
 
     showAlert("Conta criada! Verifique seu e-mail para confirmar.", "success");
@@ -448,6 +508,198 @@ async function addTask() {
   taskInput.value = "";
   taskInput.focus();
   checkEmpty();
+
+  // Atualiza last_activity
+  updateLastActivity();
+}
+
+// =========================
+// ADMIN — admin.html
+// =========================
+let allUsers = [];
+let filteredUsers = [];
+
+async function initAdmin() {
+  // Verifica se está na página admin
+  if (!el("usersTableBody")) return;
+
+  // Aguarda sessão carregar
+  const { data } = await db.auth.getSession();
+  currentUser = data.session?.user || null;
+
+  if (!currentUser) {
+    window.location.href = "login.html";
+    return;
+  }
+
+  // Verifica se é admin
+  const { data: userData, error } = await db
+    .from("users")
+    .select("is_admin")
+    .eq("id", currentUser.id)
+    .single();
+
+  if (error || !userData?.is_admin) {
+    showAlert("❌ Acesso negado. Apenas administradores podem acessar esta página.", "error");
+    setTimeout(() => { window.location.href = "index.html"; }, 2000);
+    return;
+  }
+
+  // Carrega dados
+  await loadUsers();
+  setupAdminListeners();
+  updateStatistics();
+
+  // Atualiza estatísticas a cada 30 segundos
+  setInterval(updateStatistics, 30000);
+}
+
+async function loadUsers() {
+  const tbody = el("usersTableBody");
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 30px;">Carregando...</td></tr>';
+
+  const { data, error } = await db
+    .from("users")
+    .select("*")
+    .order("last_activity", { ascending: false });
+
+  if (error) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: red;">Erro ao carregar usuários</td></tr>';
+    console.error(error);
+    return;
+  }
+
+  allUsers = data || [];
+  filteredUsers = [...allUsers];
+  renderUsers(filteredUsers);
+}
+
+function renderUsers(users) {
+  const tbody = el("usersTableBody");
+  if (!tbody) return;
+
+  if (users.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 30px;">Nenhum usuário encontrado</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = users.map(user => {
+    const isOnline = isUserOnline(user.last_activity);
+    const statusClass = user.is_banned ? "banned" : isOnline ? "online" : "";
+    const statusText = user.is_banned ? "🚫 Banido" : isOnline ? "✅ Online" : "⏱ Offline";
+    const lastActivity = formatDate(user.last_activity);
+    const actionText = user.is_banned ? "Desbanir" : "Banir";
+    const actionClass = user.is_banned ? "btn" : "btn-danger";
+
+    return `
+      <tr>
+        <td>${user.email.split("@")[0]}</td>
+        <td>${user.email}</td>
+        <td>${lastActivity}</td>
+        <td><span class="status ${statusClass}">${statusText}</span></td>
+        <td style="text-align: center;">
+          <button class="${actionClass}" onclick="toggleBanUser('${user.id}', ${user.is_banned})">
+            ${actionText}
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function isUserOnline(lastActivity) {
+  if (!lastActivity) return false;
+  const lastTime = new Date(lastActivity).getTime();
+  const now = new Date().getTime();
+  const fiveMinutes = 5 * 60 * 1000;
+  return (now - lastTime) < fiveMinutes;
+}
+
+function formatDate(dateString) {
+  if (!dateString) return "Nunca";
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Agora";
+  if (diffMins < 60) return `${diffMins}m atrás`;
+  if (diffHours < 24) return `${diffHours}h atrás`;
+  if (diffDays < 7) return `${diffDays}d atrás`;
+  return date.toLocaleDateString("pt-BR");
+}
+
+async function toggleBanUser(userId, isBanned) {
+  const newBannedStatus = !isBanned;
+
+  const { error } = await db
+    .from("users")
+    .update({ is_banned: newBannedStatus })
+    .eq("id", userId);
+
+  if (error) {
+    showAlert("❌ Erro ao atualizar status de banimento", "error");
+    console.error(error);
+    return;
+  }
+
+  const action = newBannedStatus ? "banido" : "desbanido";
+  showAlert(`✅ Usuário ${action} com sucesso`, "success");
+  await loadUsers();
+  updateStatistics();
+}
+
+async function updateStatistics() {
+  const { data } = await db.from("users").select("*");
+  if (!data) return;
+
+  const total = data.length;
+  const online = data.filter(u => isUserOnline(u.last_activity) && !u.is_banned).length;
+  const banned = data.filter(u => u.is_banned).length;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const loginsToday = data.filter(u => {
+    const userDate = new Date(u.last_activity);
+    userDate.setHours(0, 0, 0, 0);
+    return userDate.getTime() === today.getTime();
+  }).length;
+
+  el("totalUsers").textContent = total;
+  el("onlineUsers").textContent = online;
+  el("bannedUsers").textContent = banned;
+  el("loginsToday").textContent = loginsToday;
+}
+
+function setupAdminListeners() {
+  const searchInput = el("searchUsers");
+  if (!searchInput) return;
+
+  searchInput.addEventListener("input", (e) => {
+    const query = e.target.value.toLowerCase();
+    filteredUsers = allUsers.filter(user =>
+      user.email.toLowerCase().includes(query) ||
+      user.email.split("@")[0].toLowerCase().includes(query)
+    );
+    renderUsers(filteredUsers);
+  });
+
+  el("btnLogout")?.addEventListener("click", async () => {
+    await db.auth.signOut();
+    window.location.href = "index.html";
+  });
+}
+
+async function updateLastActivity() {
+  if (!currentUser) return;
+  await db
+    .from("users")
+    .update({ last_activity: new Date().toISOString() })
+    .eq("id", currentUser.id);
 }
 
 // =========================
@@ -460,6 +712,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (el("taskList"))   { initSession(); initLogout(); initTaskEvents(); }
   if (el("btnLogin"))   { initLoginPage(); }
   if (el("btnRegister")){ initCadastroPage(); }
+  if (el("usersTableBody")) { initAdmin(); }
 });
 
 function initTaskEvents() {

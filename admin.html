@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: { sans: ['Sora', 'sans-serif'] },
+            colors: {
+              primary: { DEFAULT: '#4f46e5', hover: '#4338ca', light: '#eef2ff' },
+            },
+            keyframes: {
+              fadeIn: { from: { opacity: '0', transform: 'translateY(12px)' }, to: { opacity: '1', transform: 'translateY(0)' } }
+            },
+            animation: { fadeIn: 'fadeIn 0.25s ease-out' }
+          }
+        }
+      }
+    </script>
+    <link rel="stylesheet" href="admin.css">
+  </head>
+  <body class="min-h-screen flex flex-col bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300 font-sans">
+    <header class="bg-primary shadow-lg sticky top-0 z-10">
+      <div class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 class="text-white text-2xl font-bold tracking-tight">Painel Administrativo</h1>
+          <p class="text-indigo-200 text-sm mt-1">Gerenciamento de usuário do TaskFlow</p>
+        </div>
+        
+        <div class="flex items-center gap-3">
+          <button class="text-indigo-200 text-sm mt-1">Atualizar</button>
+          <button class="bg-red-500 hover:bg-red-600 text-white text-sm px-4 py-2 rounded-xl transition">Sair</button>
+        </div>
+      </div>
+    </header>
+    
+    <main>
+      <section class="cards">
+        <div class="card">
+          <p>Usuários Totais</p>
+          <h3 id="totalUsers" style="font-size: 28px; font-weight: bold; margin-top: 10px;">-</h3>
+        </div>
+
+        <div class="card">
+          <p>Online Agora</p>
+          <h3 id="onlineUsers" style="font-size: 28px; font-weight: bold; margin-top: 10px; color: #22c55e;">-</h3>
+        </div>
+
+        <div class="card">
+          <p>Banidos</p>
+          <h3 id="bannedUsers" style="font-size: 28px; font-weight: bold; margin-top: 10px; color: #ef4444;">-</h3>
+        </div>
+
+        <div class="card">
+          <p>Logins Hoje</p>
+          <h3 id="loginsToday" style="font-size: 28px; font-weight: bold; margin-top: 10px;">-</h3>
+        </div>
+      </section>
+
+      <section class="table-box">
+        <div class="table-header">
+          <div>
+            <h2>Usuários cadastrados</h2>
+            <p>Controle e gerenciamento de acesso</p>
+          </div>
+
+          <input type="text" id="searchUsers" placeholder="Buscar usuário..." />
+        </div>
+
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Usuário</th>
+                <th>E-mail</th>
+                <th>Último Acesso</th>
+                <th>Status</th>
+                <th style="text-align:center;">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody">
+              <tr>
+                <td colspan="5" style="text-align: center; padding: 30px;">Carregando usuários...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    
+    <footer class="bg-slate-800 dark:bg-black text-slate-400 text-xs text-center py-4 mt-auto">
+      Desenvolvido com HTML5 · Tailwind CSS · JavaScript
+    </footer>
+  </body>
+</html>
